@@ -177,3 +177,114 @@ func compareCapabilities(a, b a2a.AgentCapabilities) bool {
 - Environment variable validation catches missing requirements
 - Provider abstraction enables easy addition of new providers
 - Configuration system integrates properly with existing A2A and AWS SDK types
+## T
+ask 3: Create JSON-RPC message handling foundation
+
+### JSON-RPC 2.0 Specification Compliance
+- **ALWAYS follow JSON-RPC 2.0 specification exactly** - Use standard error codes and message formats
+- Standard error codes: Parse Error (-32700), Invalid Request (-32600), Method Not Found (-32601), Invalid Params (-32602), Internal Error (-32603)
+- Server error range: -32000 to -32099 for application-specific errors
+- Response must have either `result` OR `error`, never both, never neither
+- Request must have `jsonrpc: "2.0"`, `method`, and `id` fields
+
+### JSON-RPC Message Parsing Strategy
+- Create separate parsing functions for requests and responses (`ParseJSONRPCRequest`, `ParseJSONRPCResponse`)
+- Validate JSON structure first, then validate JSON-RPC compliance
+- Use proper error types: return `*JSONRPCError` for JSON-RPC specific errors
+- Extract request ID even from malformed requests for proper error responses
+
+### Error Handling Architecture
+- Implement `JSONRPCError` as a proper Go error type with `Error()` method
+- Create constructor functions for each standard error type (`NewJSONRPCParseError`, etc.)
+- Use `HandleJSONRPCError` to convert any error to a proper JSON-RPC error response
+- Validate server error codes are in the correct range (-32000 to -32099)
+
+### Serialization and Validation Patterns
+- Always validate before serializing to catch issues early
+- Use consistent validation functions for both parsing and serialization
+- Implement bidirectional serialization: parse → validate → serialize should be lossless
+- Create utility functions for common operations (`IsJSONRPCRequest`, `ExtractRequestID`)
+
+### Testing JSON-RPC Implementation
+- Test all standard error scenarios comprehensively
+- Test edge cases: empty bodies, malformed JSON, missing required fields
+- Test both valid and invalid requests/responses with expected error codes
+- Verify error messages are helpful and follow JSON-RPC specification
+- Test serialization round-trips: parse → serialize → parse should be identical
+
+### JSON-RPC Type Safety Patterns
+```go
+// Use interface{} for flexible ID types (string, number, null)
+type JSONRPCRequest struct {
+    ID interface{} `json:"id"`
+}
+
+// Validate ID is not nil (null is allowed, but missing is not)
+if req.ID == nil {
+    return fmt.Errorf("id is required")
+}
+```
+
+### Error Constructor Patterns
+```go
+// Standard error constructors with consistent data field usage
+func NewJSONRPCMethodNotFoundError(method string) *JSONRPCError {
+    return &JSONRPCError{
+        Code:    JSONRPCErrorMethodNotFound,
+        Message: "Method not found",
+        Data:    fmt.Sprintf("method '%s' not found", method),
+    }
+}
+```
+
+### JSON-RPC Detection Utilities
+- `IsJSONRPCRequest` provides quick detection without full parsing overhead
+- Use string contains checks for performance on large payloads
+- Handle both string and numeric JSON-RPC version formats
+- Distinguish between requests and responses in detection logic
+
+### Request ID Extraction for Error Handling
+- `ExtractRequestID` enables proper error responses even when parsing fails
+- Handle all ID types: string, number, null, missing
+- Return nil for unparseable JSON or missing ID field
+- Essential for maintaining JSON-RPC protocol compliance in error scenarios
+
+### JSON-RPC Error Response Generation
+- Always include the original request ID in error responses
+- Use appropriate error codes for different failure types
+- Include helpful error details in the `data` field
+- Maintain JSON-RPC 2.0 format compliance in all error responses
+
+### Validation Function Design
+- Separate validation for requests vs responses (different rules)
+- Validate JSON-RPC version string exactly ("2.0")
+- Ensure mutual exclusivity of result/error in responses
+- Provide specific error messages for each validation failure
+
+### Testing Strategy for JSON-RPC
+- Test matrix approach: valid/invalid × request/response × all error types
+- Use table-driven tests for comprehensive coverage
+- Test error interface implementation (`var _ error = (*JSONRPCError)(nil)`)
+- Verify error string formatting includes code and message
+- Test helper functions like string contains for edge cases
+
+### Performance Considerations
+- `IsJSONRPCRequest` uses string operations for fast detection
+- Avoid full JSON parsing when only detection is needed
+- `ExtractRequestID` does minimal parsing for error handling
+- Lazy validation: parse first, validate second for better error messages
+
+### Integration with Existing Types
+- JSON-RPC types were already defined in `types.go` from previous tasks
+- Extended existing types with new validation and parsing functions
+- Maintained compatibility with existing constructor functions
+- Added comprehensive error handling without breaking existing interfaces
+
+### Key Success Metrics for JSON-RPC Tasks
+- All JSON-RPC 2.0 specification requirements implemented correctly
+- Comprehensive error handling with proper error codes
+- Robust parsing and validation with helpful error messages
+- Complete test coverage including edge cases and error scenarios
+- Utility functions for common JSON-RPC operations
+- Integration with existing project structure and types
+- Performance-conscious implementation for serverless environments
